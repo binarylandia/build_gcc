@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+
+set -euxo pipefail
+
+export NAME="gcc"
+export BUILD_DIR=".build"
+export OUT_DIR=".out"
+export INSTALL_DIR="/opt/${NAME}"
+
+export NICE="nice -19 ionice -c2 -n5"
+export JOBS="${JOBS:=$(($(nproc --all) + 2))}"
+
+export build_time="$(date -u '+%Y-%m-%d_%H-%M-%S')"
+
+function abspath() {
+  readlink -m "$1"
+}
+export -f abspath
+
+function log() {
+  tee -a "${1}" | \
+    GREP_COLOR='01;31' grep --line-buffered --color=always -iE "err|error|fail|can not|cannot|can't|unable|critical|fatal|reject|deny|denied|terminat|abort|panic|fault|invalid|undefined symbol|" | \
+    GREP_COLOR='01;33' grep --line-buffered --color=always -iE "warn|warning|caution|alert|notice|" | \
+    GREP_COLOR='01;36' grep --line-buffered --color=always -iE "note|info|status|detail|"
+}
+export -f log
+
+function package() {
+  local input_dir="${1}"
+  local output_tarball="${2}"
+
+  ${NICE} find "${input_dir}" -printf "%P\n" \
+    | ${NICE} tar --no-recursion -cf - -C "${input_dir}" --files-from=- \
+    | ${NICE} xz -T0 -k > "${output_tarball}"
+}
+export -f package
+
+export THIS_DIR="$(abspath "$(cd "$(dirname "${BASH_SOURCE[0]}")"; pwd)")"
+export ROOT_DIR="$(abspath "${THIS_DIR}/..")"
+
+export CC="ccache ${CC:-gcc}"
+export CXX="ccache ${CXX:-g++}"
+export CCACHE_DIR="/cache/ccache"
+export CCACHE_NOCOMPRESS="1"
+export CCACHE_MAXSIZE="50G"
+
+versions=(
+  "9.5.0"
+  "10.5.0"
+  "12.4.0"
+  "13.3.0"
+  "14.2.0"
+)
+
+function build_and_package() {
+  set -euxo pipefail
+
+  local version="${1}"
+
+  export build_dir="$(abspath ${BUILD_DIR})/${version}"
+  export install_dir="$(abspath ${INSTALL_DIR})/${version}"
+  export out_dir="$(abspath "${OUT_DIR}")"
+
+  mkdir -p "${out_dir}" "${build_dir}"
+
+  pushd "$build_dir" >/dev/null
+    src_dir="$(abspath "${NAME}-${version}")"
+
+    if [ ! -d "${src_dir}" ]; then
+      mkdir -p "${src_dir}"
+      curl -fsSL "https://ftp.gnu.org/gnu/gcc/gcc-${version}/gcc-${version}.tar.xz" | tar --strip-components=1 -C "${src_dir}" -xJ
+      mkdir -p "${src_dir}"
+      pushd "${src_dir}" >/dev/null
+        ./contrib/download_prerequisites >/dev/null
+      popd >/dev/null
+    fi
+
+    pushd "${src_dir}" >/dev/null
+      ${NICE} ./configure \
+        --prefix="${install_dir}" \
+        --disable-multilib \
+        --disable-nls \
+        --enable-gold=yes \
+        --enable-languages=c,c++,fortran \
+        --enable-ld=yes \
+        --enable-lto \
+        --enable-plugins \
+        2>&1 | log "build.log"
+
+      ${NICE} make -j"${JOBS}" 2>&1 | log "build.log"
+      ${NICE} make install-strip 2>&1 | log "build.log"
+
+      cp "build.log" "${install_dir}/"
+
+      package "${install_dir}" "${out_dir}/gcc-${version}-host-x86_64-unknown-linux-gnu.2.17-${build_time}.tar.xz"
+    popd >/dev/null
+  popd >/dev/null
+
+}
+export -f build_and_package
+parallel -j5 -u build_and_package ::: "${versions[@]}"
+
+
+
+
