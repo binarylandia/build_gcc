@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+
+set -euxo pipefail
+
+NAME="gcc"
+GCC_VERSION="9.5.0"
+BINUTILS_VERSION="2.43.1"
+VERSION="${GCC_VERSION}"
+
+BUILD_DIR=".build"
+INSTALL_DIR="/opt/${NAME}"
+OUT_DIR=".out"
+
+NICE="nice -19 ionice -c2 -n5"
+JOBS="${JOBS:=$(($(nproc --all) + 2))}"
+
+build_time="$(date '+%Y%m%d%H%M%S')"
+
+#export CC="ccache ${CC:-gcc}"
+#export CXX="ccache ${CC:-g++}"
+#export CCACHE_DIR="/cache/ccache"
+#export CCACHE_NOCOMPRESS="1"
+#export CCACHE_MAXSIZE="50G"
+
+function abspath() {
+  readlink -m "$1"
+}
+
+function log() {
+  tee -a "${1}" | stdbuf -oL grep --color=always -iE "error|fail|cannot|can't|unable|"
+}
+
+function package() {
+  local input_dir="${1}"
+  local output_tarball="${2}"
+
+  ${NICE} find "${input_dir}" -printf "%P\n" \
+    | ${NICE} tar --no-recursion -cf - -C "${input_dir}" --files-from=- \
+    | ${NICE} xz -T0 -k > "${output_tarball}"
+}
+
+write_version() {
+  filepath="${1}"
+
+  cat > "$filepath" << EOF
+gcc ${GCC_VERSION}
+binutils ${BINUTILS_VERSION}
+${build_time}
+EOF
+}
+
+export THIS_DIR="$(abspath "$(cd "$(dirname "${BASH_SOURCE[0]}")"; pwd)")"
+export ROOT_DIR="$(abspath "${THIS_DIR}/..")"
+
+build_dir="$(abspath ${BUILD_DIR})"
+mkdir -p "${build_dir}"
+outdir="$(abspath "${OUT_DIR}")"
+mkdir -p "${outdir}"
+
+if [ ! -f "${ROOT_DIR}/tarballs/gcc-${VERSION}.tar.xz" ]; then
+  mkdir -p "${ROOT_DIR}/tarballs"
+  curl -fsSLo "${ROOT_DIR}/tarballs/gcc-${VERSION}.tar.xz" "https://ftp.gnu.org/gnu/gcc/gcc-${VERSION}/gcc-${VERSION}.tar.xz"
+fi
+
+pushd "$build_dir" >/dev/null
+  src_dir="${NAME}-${VERSION}"
+
+  if [ ! -d "${src_dir}" ]; then
+    mkdir -p "${src_dir}"
+#    curl -fsSL "https://ftp.gnu.org/gnu/gcc/gcc-${VERSION}/gcc-${VERSION}.tar.xz" | tar --strip-components=1 -C "${src_dir}" -xJ
+
+    tar --strip-components=1 -C "${src_dir}" -xf "${ROOT_DIR}/tarballs/gcc-${VERSION}.tar.xz"
+
+    pushd "${src_dir}" >/dev/null
+      ./contrib/download_prerequisites >/dev/null
+    popd >/dev/null
+  fi
+
+#  export CFLAGS="-D_GLIBCXX_USE_CXX11_ABI=1 ${CFLAGS:-}"
+#  export CXXFLAGS="-D_GLIBCXX_USE_CXX11_ABI=1 ${CXXFLAGS:-}"
+
+  pushd "${src_dir}" >/dev/null
+    ${NICE} ./configure \
+      --prefix="${INSTALL_DIR}" \
+      --disable-multilib \
+      --disable-nls \
+      2>&1 | log "build.log"
+
+#      --enable-gold=yes \
+#      --enable-languages=c,c++,fortran \
+#      --enable-ld=yes \
+#      --enable-lto \
+#      --enable-plugins \
+#      --disable-bootstrap \
+#      --enable-static \
+#      --disable-shared \
+#      --enable-default-pie \
+
+    ${NICE} make -j"${JOBS}" 2>&1 | log "build.log"
+    ${NICE} make install 2>&1 | log "build.log"
+
+    write_version "${INSTALL_DIR}/version.txt"
+    cp "build.log" "${INSTALL_DIR}/"
+
+    package "${INSTALL_DIR}" "${outdir}/${NAME}-${VERSION}-${build_time}.tar.xz"
+  popd >/dev/null
+popd >/dev/null
+

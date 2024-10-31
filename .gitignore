@@ -1,0 +1,6 @@
+/\.build/
+/\.cache/
+/\.env
+/\.opt/
+/\.out/
+/tarballs/
