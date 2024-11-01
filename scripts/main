@@ -51,6 +51,7 @@ versions=(
   "13.3.0"
   "14.2.0"
 )
+export binutils_version="2.43.1"
 
 function build_and_package() {
   set -euxo pipefail
@@ -64,8 +65,39 @@ function build_and_package() {
   mkdir -p "${out_dir}" "${build_dir}"
 
   pushd "$build_dir" >/dev/null
-    src_dir="$(abspath "${NAME}-${version}")"
 
+    src_dir="$(abspath "binutils-${binutils_version}")"
+    if [ ! -d "${src_dir}" ]; then
+      mkdir -p "${src_dir}"
+      curl -fsSL "https://ftp.gnu.org/gnu/binutils/binutils-${binutils_version}.tar.xz" | tar --strip-components=1 -C "${src_dir}" -xJ
+    fi
+
+    pushd "${src_dir}" >/dev/null
+      ${NICE} ./configure \
+        --prefix="${install_dir}" \
+        --disable-nls \
+        --enable-64-bit-bfd=yes \
+        --enable-gold=yes \
+        --enable-ld=yes \
+        --enable-lto=yes \
+        --enable-plugins \
+        --enable-relro=yes \
+        --enable-shared \
+        --enable-static \
+        --enable-threads=yes \
+        2>&1 | log "build.log"
+
+        ${NICE} make -j"${JOBS}" 2>&1 | log "build.log"
+        ${NICE} make install-strip 2>&1 | log "build.log"
+    popd
+
+    export PATH="${install_dir}/bin${PATH:+":${PATH}"}"
+    export C_INCLUDE_PATH="${install_dir}/include${C_INCLUDE_PATH:+":${C_INCLUDE_PATH}"}"
+    export CPLUS_INCLUDE_PATH="${install_dir}/include${CPLUS_INCLUDE_PATH:+":${CPLUS_INCLUDE_PATH}"}"
+    export LIBRARY_PATH="${install_dir}/lib:${install_dir}/lib64${LIBRARY_PATH:+":${LIBRARY_PATH}"}"
+    export LD_LIBRARY_PATH="${install_dir}/lib:${install_dir}/lib64${LD_LIBRARY_PATH:+":${LD_LIBRARY_PATH}"}"
+
+    src_dir="$(abspath "${NAME}-${version}")"
     if [ ! -d "${src_dir}" ]; then
       mkdir -p "${src_dir}"
       curl -fsSL "https://ftp.gnu.org/gnu/gcc/gcc-${version}/gcc-${version}.tar.xz" | tar --strip-components=1 -C "${src_dir}" -xJ
