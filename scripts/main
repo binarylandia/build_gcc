@@ -78,13 +78,33 @@ function build_and_package() {
     pushd "${src_dir}" >/dev/null
       ${NICE} ./configure \
         --prefix="${install_dir}" \
-        --disable-multilib \
+        --enable-bootstrap \
+        --enable-multilib \
         --disable-nls \
         --enable-gold=yes \
-        --enable-languages=c,c++,fortran \
+        --enable-languages=c,c++,fortran,lto \
         --enable-ld=yes \
         --enable-lto \
         --enable-plugins \
+        --enable-static \
+        --enable-shared \
+        \
+        --disable-libunwind-exceptions \
+        --enable-__cxa_atexit \
+        --enable-checking=release \
+        --enable-gnu-indirect-function \
+        --enable-gnu-unique-object \
+        --enable-initfini-array \
+        --enable-link-serialization=1 \
+        --enable-linker-build-id \
+        --enable-plugin \
+        --enable-threads=posix \
+        --with-arch=x86-64 \
+        --with-build-config=bootstrap-lto \
+        --with-default-libstdcxx-abi=gcc4-compatible \
+        --with-gcc-major-version-only \
+        --with-linker-hash-style=gnu \
+        --with-multilib-list=m64 \
         2>&1 | log "build.log"
 
       ${NICE} make -j"${JOBS}" 2>&1 | log "build.log"
@@ -99,7 +119,4 @@ function build_and_package() {
 }
 export -f build_and_package
 parallel -j5 -u build_and_package ::: "${versions[@]}"
-
-
-
 
