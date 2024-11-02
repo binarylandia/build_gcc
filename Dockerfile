@@ -23,6 +23,7 @@ RUN set -euxo pipefail >/dev/null \
   curl \
   devtoolset-11 \
   git \
+  glibc-static \
   make \
   parallel \
   sudo \
