@@ -168,8 +168,6 @@ function build_and_package() {
       ${NICE} make -j"${JOBS}" 2>&1 | log "build.log"
       ${NICE} make install-strip 2>&1 | log "build.log"
 
-      cp "build.log" "${install_dir}/"
-
       pushd "${install_dir}/bin"
         ln -sf "gcc" "cc"
         ln -sf "gcc" "x86_64-pc-linux-gnu-cc"
