@@ -170,6 +170,11 @@ function build_and_package() {
 
       cp "build.log" "${install_dir}/"
 
+      pushd "${install_dir}/bin"
+        ln -sf "gcc" "cc"
+        ln -sf "gcc" "x86_64-pc-linux-gnu-cc"
+      popd
+
       package "${install_dir}" "${out_dir}/gcc-${version}-host-x86_64-unknown-linux-gnu.2.17-${build_time}.tar.xz"
     popd >/dev/null
   popd >/dev/null
