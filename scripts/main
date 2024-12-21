@@ -50,7 +50,7 @@ function package() {
 
   ${NICE} find "${input_dir}" -printf "%P\n" \
     | ${NICE} tar --no-recursion -cf - -C "${input_dir}" --files-from=- \
-    | ${NICE} gz -k > "${output_tarball}"
+    | ${NICE} gzip > "${output_tarball}"
 }
 export -f package
 
