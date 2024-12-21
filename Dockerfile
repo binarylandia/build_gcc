@@ -1,18 +1,16 @@
-ARG DOCKER_BASE_IMAGE
-FROM $DOCKER_BASE_IMAGE
-
-ARG DOCKER_BASE_IMAGE
-ENV DOCKER_BASE_IMAGE="${DOCKER_BASE_IMAGE}"
-
+FROM quay.io/pypa/manylinux2014_x86_64
 
 SHELL ["bash", "-euxo", "pipefail", "-c"]
+
 RUN set -euxo pipefail >/dev/null \
-&& if [[ "$DOCKER_BASE_IMAGE" != centos* ]] && [[ "$DOCKER_BASE_IMAGE" != *manylinux2014* ]]; then exit 0; fi \
 && sed -i "s/enabled=1/enabled=0/g" "/etc/yum/pluginconf.d/fastestmirror.conf" \
 && sed -i "s/enabled=1/enabled=0/g" "/etc/yum/pluginconf.d/ovl.conf" \
 && yum clean all >/dev/null \
 && yum install -y epel-release >/dev/null \
 && yum remove -y \
+  ccache* \
+  clang* \
+  cmake* \
   devtoolset* \
   gcc* \
   llvm-toolset* \
@@ -24,6 +22,7 @@ RUN set -euxo pipefail >/dev/null \
   devtoolset-11 \
   git \
   glibc-static \
+  gzip \
   make \
   parallel \
   sudo \
@@ -33,26 +32,6 @@ RUN set -euxo pipefail >/dev/null \
 && yum clean all >/dev/null \
 && rm -rf /var/cache/yum
 
-RUN set -euxo pipefail >/dev/null \
-&& if [[ "$DOCKER_BASE_IMAGE" != debian* ]] && [[ "$DOCKER_BASE_IMAGE" != ubuntu* ]]; then exit 0; fi \
-&& export DEBIAN_FRONTEND=noninteractive \
-&& apt-get update -qq --yes \
-&& apt-get install -qq --no-install-recommends --yes \
-  bash \
-  ca-certificates \
-  curl \
-  g++ \
-  gcc \
-  git \
-  make \
-  parallel \
-  sudo \
-  tar \
-  xz-utils \
->/dev/null \
-&& rm -rf /var/lib/apt/lists/* \
-&& apt-get clean autoclean >/dev/null \
-&& apt-get autoremove --yes >/dev/null
 
 ENV CCACHE_DIR="/cache/ccache"
 ENV CCACHE_NOCOMPRESS="1"

@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-
 set -euxo pipefail
 
 : "${UID:? "UID is not set."}"
@@ -11,42 +10,77 @@ set -euxo pipefail
 if [ -z "$(getent group "${GID}")" ]; then
   groupadd --system --gid "${GID}" "${GROUP}"
 else
-  GROUP_EXISTING="$(getent group "${GID}" | cut -d: -f1 || true)"
-  if [ "${GROUP_EXISTING}" != "${GROUP}" ]; then
-    groupmod --new-name "${GROUP}" "${GROUP_EXISTING}"
-  fi
+  GROUP_EXISTING=$(getent group "${GID}" | cut -d: -f1)
+  groupmod --new-name "${GROUP}" "${GROUP_EXISTING}"
 fi
 
 if [ -f /etc/debian_version ]; then
   SUDO_GROUP="sudo"
-elif [ -f /etc/redhat-release ]; then
+else
   SUDO_GROUP="wheel"
 fi
 
-USER_EXISTING="$(getent passwd "${UID}" | cut -d: -f1 || true)"
-HOME_EXISTING="$(getent passwd "${UID}" | cut -d: -f6 || true)"
-
-if [ -z "${USER_EXISTING}" ]; then
+if [ -z "$(getent passwd ${UID})" ]; then
   useradd \
     --system \
     --home-dir "${HOME}" \
     --create-home \
     --shell "/bin/bash" \
-    --gid "${GID}" \
+    --gid "${GROUP}" \
     --groups "${SUDO_GROUP},${GROUP}" \
-    --uid "${UID}" \
+    --uid ${UID} \
     "${USER}"
-elif [ "${USER_EXISTING}" != "${USER}" ] || [ "${HOME_EXISTING}" != "${HOME}" ]; then
-  if [ "${HOME_EXISTING}" != "${HOME}" ]; then
-    mkdir -p "${HOME}"
-    chown -R "${USER_EXISTING}:${GROUP}" "${HOME}"
+else
+  USER_EXISTING="$(getent passwd ${UID} | cut -d: -f1)"
+
+  if [ "$(getent passwd "${USER_EXISTING}" | cut -d: -f6)" != "${HOME}" ]; then
+    if [ -d "$(getent passwd "${USER_EXISTING}" | cut -d: -f6)" ]; then
+      cp -r "$(getent passwd "${USER_EXISTING}" | cut -d: -f6)/." "${HOME}/"
+    fi
+    usermod \
+      --home "${HOME}" \
+      --shell "/bin/bash" \
+      --gid "${GID}" \
+      --groups "${SUDO_GROUP},${GROUP}" \
+      --uid "${UID}" \
+      --login "${USER}" \
+      "${USER_EXISTING}"
+    chown -R "${USER}:${GROUP}" "${HOME}"
   fi
-  usermod \
-    --home "${HOME}" \
-    --shell "/bin/bash" \
-    --gid "${GID}" \
-    --groups "${SUDO_GROUP},${GROUP}" \
-    --uid "${UID}" \
-    --login "${USER}" \
-    "${USER_EXISTING}"
+
 fi
+
+cp -a /etc/skel/. "${HOME}"/
+
+sed -i'' \
+  -e 's|^%sudo.*|%sudo ALL=(ALL:ALL) NOPASSWD: ALL|g' \
+  -e 's|^root.*|root ALL=(ALL:ALL) NOPASSWD: ALL|g' \
+  -e 's|^#includedir.*||g' \
+  "/etc/sudoers"
+
+echo "%sudo ALL=(ALL) NOPASSWD:ALL" >> "/etc/sudoers"
+echo "${USER} ALL=(ALL) NOPASSWD:ALL" >> "/etc/sudoers"
+
+cat <<'EOF' >> "${HOME}/.bashrc"
+HISTSIZE=100000
+HISTFILESIZE=200000
+
+alias ls='ls --color=auto --group-directories-first'
+alias ll='ls -alFhp --time-style="+%Y-%m-%d %H:%M:%S"'
+alias la='ls -Ah'
+alias l='ls -CFh'
+alias l1='ls -a1'
+
+alias dir='dir --color=auto'
+alias vdir='vdir --color=auto'
+alias grep='grep --color=auto'
+alias fgrep='fgrep --color=auto'
+alias egrep='egrep --color=auto'
+
+function mkcd() { mkdir -p "${1}" && cd "${1}" ; }
+
+EOF
+
+
+touch "${HOME}/.hushlogin"
+chown -R "${USER}:${GROUP}" "${HOME}"

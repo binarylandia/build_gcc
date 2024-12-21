@@ -2,25 +2,9 @@
 
 set -euxo pipefail
 
-export CFLAGS="-w -g0 -Os ${CFLAGS:-}"
-export CXXFLAGS="-w -g0 -Os ${CXXFLAGS:-}"
-export LDFLAGS="-s ${LDFLAGS:-}"
-
-export CFLAGS="-static-libgcc -static-libstdc++ ${CFLAGS:-}"
-export CXXFLAGS="-static-libgcc -static-libstdc++ ${CXXFLAGS:-}"
-export LDFLAGS="-static-libgcc -static-libstdc++ ${LDFLAGS:-}"
-
-#export CFLAGS="-static --static ${CFLAGS:-}"
-#export CXXFLAGS="-static --static ${CXXFLAGS:-}"
-#export LDFLAGS="-static --static ${LDFLAGS:-}"
-
-export CFLAGS="-fPIC ${CFLAGS:-}"
-export CXXFLAGS="-fPIC ${CXXFLAGS:-}"
-export LDFLAGS="-fPIC ${LDFLAGS:-}"
-
-#export CFLAGS="-pie -fPIE ${CFLAGS:-}"
-#export CXXFLAGS="-pie -fPIE ${CXXFLAGS:-}"
-#export LDFLAGS="-pie -fPIE ${LDFLAGS:-}"
+export CFLAGS="-fPIC -w -g0 -Os -static-libgcc -static-libstdc++"
+export CXXFLAGS="-fPIC -w -g0 -Os -static-libgcc -static-libstdc++"
+export LDFLAGS="-fPIC -s -static-libgcc -static-libstdc++"
 
 export CC="${CC:-gcc}"
 export CXX="${CXX:-g++}"
@@ -43,7 +27,7 @@ export OUT_DIR=".out"
 export INSTALL_DIR="/opt/${NAME}"
 
 export NICE="nice -19 ionice -c2 -n5"
-export JOBS="${JOBS:=$(($(nproc --all) + 2))}"
+export JOBS="${JOBS:=$(($(nproc --all) - 1))}"
 
 export build_time="$(date -u '+%Y-%m-%d_%H-%M-%S')"
 
@@ -66,39 +50,71 @@ function package() {
 
   ${NICE} find "${input_dir}" -printf "%P\n" \
     | ${NICE} tar --no-recursion -cf - -C "${input_dir}" --files-from=- \
-    | ${NICE} xz -T0 -k > "${output_tarball}"
+    | ${NICE} gz -k > "${output_tarball}"
 }
 export -f package
 
 export THIS_DIR="$(abspath "$(cd "$(dirname "${BASH_SOURCE[0]}")"; pwd)")"
 export ROOT_DIR="$(abspath "${THIS_DIR}/..")"
 
-versions=(
+gcc_versions=(
   "9.5.0"
   "10.5.0"
   "12.4.0"
-  "13.3.0"
   "14.2.0"
 )
-export binutils_version="2.43.1"
+export autoconf_version="2.72"
+export automake_version="1.17"
+export binutils_version="2.35.1"
+export make_version="4.4.1"
+
+function build_tool() {
+  set -euxo pipefail
+
+  tool_name="${1}"
+  tool_version="${2}"
+  install_dir="${3}"
+
+  src_dir="$(abspath "${tool_name}-${tool_version}")"
+  if [ ! -d "${src_dir}" ]; then
+    mkdir -p "${src_dir}"
+    curl -fsSL "https://ftp.gnu.org/gnu/${tool_name}/${tool_name}-${tool_version}.tar.gz" | tar --strip-components=1 -C "${src_dir}" -xz
+  fi
+
+  pushd "${src_dir}" >/dev/null
+    ${NICE} ./configure \
+      --prefix="${install_dir}" \
+      2>&1 | log "build.log"
+
+    ${NICE} make -j"${JOBS}" 2>&1 | log "build.log"
+    ${NICE} make install-strip 2>&1 | log "build.log"
+  popd
+}
+export -f build_tool
 
 function build_and_package() {
   set -euxo pipefail
 
-  local version="${1}"
+  local gcc_version="${1}"
 
-  export build_dir="$(abspath ${BUILD_DIR})/${version}"
-  export install_dir="$(abspath ${INSTALL_DIR})/${version}"
+  export build_dir="$(abspath ${BUILD_DIR})/${gcc_version}"
+  export install_dir="$(abspath ${INSTALL_DIR})/${gcc_version}"
   export out_dir="$(abspath "${OUT_DIR}")"
 
   mkdir -p "${out_dir}" "${build_dir}"
 
-  pushd "$build_dir" >/dev/null
+  pushd "${build_dir}" >/dev/null
+
+    export PATH="${install_dir}/bin${PATH:+":${PATH}"}"
+    export C_INCLUDE_PATH="${install_dir}/include${C_INCLUDE_PATH:+":${C_INCLUDE_PATH}"}"
+    export CPLUS_INCLUDE_PATH="${install_dir}/include${CPLUS_INCLUDE_PATH:+":${CPLUS_INCLUDE_PATH}"}"
+    export LIBRARY_PATH="${install_dir}/lib:${install_dir}/lib64${LIBRARY_PATH:+":${LIBRARY_PATH}"}"
+    export LD_LIBRARY_PATH="${install_dir}/lib:${install_dir}/lib64${LD_LIBRARY_PATH:+":${LD_LIBRARY_PATH}"}"
 
     src_dir="$(abspath "binutils-${binutils_version}")"
     if [ ! -d "${src_dir}" ]; then
       mkdir -p "${src_dir}"
-      curl -fsSL "https://ftp.gnu.org/gnu/binutils/binutils-${binutils_version}.tar.xz" | tar --strip-components=1 -C "${src_dir}" -xJ
+      curl -fsSL "https://ftp.gnu.org/gnu/binutils/binutils-${binutils_version}.tar.gz" | tar --strip-components=1 -C "${src_dir}" -xz
     fi
 
     pushd "${src_dir}" >/dev/null
@@ -109,26 +125,26 @@ function build_and_package() {
         --enable-gold=yes \
         --enable-ld=yes \
         --enable-lto=yes \
-        --enable-plugins \
+        --enable-plugin \
         --enable-static \
         --enable-threads=yes \
         2>&1 | log "build.log"
 
-        ${NICE} make -j"${JOBS}" 2>&1 | log "build.log"
-        ${NICE} make install-strip 2>&1 | log "build.log"
+      ${NICE} make -j"${JOBS}" 2>&1 | log "build.log"
+      ${NICE} make install-strip 2>&1 | log "build.log"
     popd
 
-    export PATH="${install_dir}/bin${PATH:+":${PATH}"}"
-    export C_INCLUDE_PATH="${install_dir}/include${C_INCLUDE_PATH:+":${C_INCLUDE_PATH}"}"
-    export CPLUS_INCLUDE_PATH="${install_dir}/include${CPLUS_INCLUDE_PATH:+":${CPLUS_INCLUDE_PATH}"}"
-    export LIBRARY_PATH="${install_dir}/lib:${install_dir}/lib64${LIBRARY_PATH:+":${LIBRARY_PATH}"}"
-    export LD_LIBRARY_PATH="${install_dir}/lib:${install_dir}/lib64${LD_LIBRARY_PATH:+":${LD_LIBRARY_PATH}"}"
+    build_tool "autoconf" "2.71"   "${install_dir}"
+    build_tool "automake" "1.17"   "${install_dir}"
+    build_tool "libtool"  "2.5.4"  "${install_dir}"
+    build_tool "m4"       "1.4.19" "${install_dir}"
+    build_tool "make"     "4.4.1"  "${install_dir}"
 
-    src_dir="$(abspath "${NAME}-${version}")"
+    src_dir="$(abspath "${NAME}-${gcc_version}")"
     if [ ! -d "${src_dir}" ]; then
       mkdir -p "${src_dir}"
-      curl -fsSL "https://ftp.gnu.org/gnu/gcc/gcc-${version}/gcc-${version}.tar.xz" | tar --strip-components=1 -C "${src_dir}" -xJ
-      mkdir -p "${src_dir}"
+      curl -fsSL "https://ftp.gnu.org/gnu/gcc/gcc-${gcc_version}/gcc-${gcc_version}.tar.gz" | tar --strip-components=1 -C "${src_dir}" -xz
+      ls -al
       pushd "${src_dir}" >/dev/null
         ./contrib/download_prerequisites >/dev/null
       popd >/dev/null
@@ -144,7 +160,7 @@ function build_and_package() {
         --enable-languages=c,c++,fortran,lto \
         --enable-ld=yes \
         --enable-lto \
-        --enable-plugins \
+        --enable-plugin \
         --enable-static \
         \
         --disable-libunwind-exceptions \
@@ -155,12 +171,11 @@ function build_and_package() {
         --enable-initfini-array \
         --enable-link-serialization=1 \
         --enable-linker-build-id \
-        --enable-plugin \
         --enable-threads=posix \
         --with-arch=x86-64 \
         --with-build-config=bootstrap-lto \
         --with-default-libstdcxx-abi=gcc4-compatible \
-        --with-gcc-major-version-only \
+        --with-gcc-major-gcc_version-only \
         --with-linker-hash-style=gnu \
         --with-multilib-list=m64 \
         2>&1 | log "build.log"
@@ -170,14 +185,13 @@ function build_and_package() {
 
       pushd "${install_dir}/bin"
         ln -sf "gcc" "cc"
-        ln -sf "gcc" "x86_64-pc-linux-gnu-cc"
+        ln -sf "gcc" "cxx"
       popd
 
-      package "${install_dir}" "${out_dir}/gcc-${version}-host-x86_64-unknown-linux-gnu.2.17-${build_time}.tar.xz"
+      package "${install_dir}" "${out_dir}/gcc-${gcc_version}-host-x86_64-unknown-linux-gnu.2.17-${build_time}.tar.gz"
     popd >/dev/null
   popd >/dev/null
 
 }
 export -f build_and_package
-parallel -j5 -u build_and_package ::: "${versions[@]}"
-
+parallel -j5 -u build_and_package ::: "${gcc_versions[@]}"
