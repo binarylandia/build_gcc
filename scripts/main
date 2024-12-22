@@ -175,7 +175,7 @@ function build_and_package() {
         --with-arch=x86-64 \
         --with-build-config=bootstrap-lto \
         --with-default-libstdcxx-abi=gcc4-compatible \
-        --with-gcc-major-gcc_version-only \
+        --with-gcc-major-version-only \
         --with-linker-hash-style=gnu \
         --with-multilib-list=m64 \
         2>&1 | log "build.log"
