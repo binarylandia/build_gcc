@@ -1,6 +1,4 @@
-# build_gcc
-
-Prebuilt GCC compiler toolchains for x86_64 Linux.
+# Prebuilt GCC compiler toolchains for x86_64 Linux
 
 ## [Releases](https://github.com/binarylandia/build_gcc/releases)
 
