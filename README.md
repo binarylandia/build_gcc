@@ -1,5 +1,8 @@
 # Prebuilt GCC compiler toolchains for x86_64 Linux
 
+> [!IMPORTANT]
+> This repository is retired. The binarylandia builds compile with clang of [build_llvm](https://github.com/binarylandia/build_llvm) on the glibc 2.17 sysroots of the GCC toolchains of [build_crosstool-ng](https://github.com/binarylandia/build_crosstool-ng), whose `x86_64-unknown-linux-gnu` toolchain is also a GCC for x86_64 Linux hosts. The existing releases stay available.
+
 ## [Releases](https://github.com/binarylandia/build_gcc/releases)
 
 Builds self-contained GCC installations on manylinux2014 (glibc 2.17) for maximum compatibility with older Linux distributions. Each release includes GCC with C, C++, and Fortran support, plus binutils, autoconf, automake, libtool, m4, and make.
